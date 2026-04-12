@@ -21,6 +21,10 @@ public class RedeemJobService {
     private final Map<String, RedeemJob> jobs = new ConcurrentHashMap<>();
 
     public RedeemJob createJob(List<GameAccount> accounts, String giftCode) {
+        if (accounts == null || accounts.isEmpty()) {
+            throw new IllegalArgumentException("Accounts list cannot be empty");
+        }
+
         String jobId = UUID.randomUUID().toString();
         Instant now = Instant.now();
 

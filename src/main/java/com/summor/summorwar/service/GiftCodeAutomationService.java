@@ -1,6 +1,7 @@
 package com.summor.summorwar.service;
 
 import com.summor.summorwar.models.GameAccount;
+import io.github.bonigarcia.wdm.WebDriverManager;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.openqa.selenium.By;
@@ -16,6 +17,7 @@ import org.springframework.stereotype.Service;
 
 import java.time.Duration;
 import java.util.List;
+import java.util.Locale;
 
 @Service
 @RequiredArgsConstructor
@@ -28,6 +30,11 @@ public class GiftCodeAutomationService {
     private long sleepBetweenAccountsMs;
 
     public void redeemForAccounts(List<GameAccount> accounts, String code, RedeemProgressListener listener) {
+        if (accounts == null || accounts.isEmpty()) {
+            return;
+        }
+
+        WebDriverManager.chromedriver().setup();
         WebDriver driver = new ChromeDriver(options);
         WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(12));
 
@@ -45,6 +52,9 @@ public class GiftCodeAutomationService {
                     Thread.sleep(sleepBetweenAccountsMs);
                 }
             }
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Redeem job interrupted while sleeping between accounts", e);
         } catch (Exception e) {
             throw new RuntimeException("Failed to redeem gift code for accounts", e);
         } finally {
@@ -58,34 +68,33 @@ public class GiftCodeAutomationService {
             GameAccount acc,
             String code
     ) {
-
         try {
             driver.get("https://rosa-midman.com/giftcode-summoners-war-sky-arena");
 
             WebElement serverElement = wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("EVTserver")));
-            new Select(serverElement).selectByValue(acc.getHiveServer());
+            new Select(serverElement).selectByValue(safeValue(acc.getHiveServer()));
 
             WebElement idBox = wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("EVTid")));
             idBox.clear();
-            idBox.sendKeys(acc.getHiveId());
+            idBox.sendKeys(safeValue(acc.getHiveId()));
 
             WebElement codeBox = wait.until(ExpectedConditions.visibilityOfElementLocated(By.id("EVTcode")));
             codeBox.clear();
-            codeBox.sendKeys(code);
+            codeBox.sendKeys(safeValue(code));
 
             WebElement redeemBtn = wait.until(ExpectedConditions.elementToBeClickable(By.id("SubmitCoupon")));
             redeemBtn.click();
 
             WebElement popup1 = waitForPopup(wait);
             if (popup1 == null) {
-                return RedeemAttemptResult.failed("No popup appeared after submit");
+                return failedResult("No popup appeared after submit");
             }
 
-            String p1Text = popup1.getText().toUpperCase();
+            String popup1Text = normalizePopupText(popup1.getText());
 
-            if (containsFailKeyword(p1Text)) {
+            if (containsFailKeyword(popup1Text)) {
                 clickOkButton(popup1, wait);
-                return RedeemAttemptResult.failed(p1Text);
+                return failedResult(popup1Text);
             }
 
             clickConfirmButton(popup1, wait);
@@ -93,31 +102,33 @@ public class GiftCodeAutomationService {
 
             WebElement popup2 = waitForPopup(wait);
             if (popup2 == null) {
-                return RedeemAttemptResult.failed("No confirmation popup after confirm");
+                return failedResult("No confirmation popup after confirm");
             }
 
-            String p2Text = popup2.getText().toUpperCase();
-            log.info("Popup2 = {}", p2Text);
+            String popup2Text = normalizePopupText(popup2.getText());
+            log.info("Popup2 = {}", popup2Text);
 
-            if (containsSuccessKeyword(p2Text)) {
+            if (containsSuccessKeyword(popup2Text)) {
                 clickOkButton(popup2, wait);
-                return RedeemAttemptResult.success();
+                return successResult();
             }
 
             clickOkButton(popup2, wait);
-            return RedeemAttemptResult.failed(p2Text);
+            return failedResult(popup2Text);
 
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            log.warn("Redeem interrupted for account {}", acc.getHiveId(), e);
+            return failedResult("Redeem interrupted");
         } catch (Exception e) {
             log.warn("Redeem failed for account {}", acc.getHiveId(), e);
-            return RedeemAttemptResult.failed(e.getMessage());
+            return failedResult(e.getMessage());
         }
     }
 
     private WebElement waitForPopup(WebDriverWait wait) {
         try {
-            return wait.until(ExpectedConditions.visibilityOfElementLocated(
-                    By.cssSelector(".jconfirm-box")
-            ));
+            return wait.until(ExpectedConditions.visibilityOfElementLocated(By.cssSelector(".jconfirm-box")));
         } catch (Exception e) {
             return null;
         }
@@ -175,6 +186,23 @@ public class GiftCodeAutomationService {
         }
     }
 
+    private String normalizePopupText(String text) {
+        return safeValue(text).toUpperCase(Locale.ROOT);
+    }
+
+    private String safeValue(String value) {
+        return value == null ? "" : value.trim();
+    }
+
+    private RedeemAttemptResult successResult() {
+        return new RedeemAttemptResult(true, null);
+    }
+
+    private RedeemAttemptResult failedResult(String error) {
+        String normalizedError = error == null || error.isBlank() ? "Unknown redeem error" : error;
+        return new RedeemAttemptResult(false, normalizedError);
+    }
+
     public interface RedeemProgressListener {
         void onAccountStarted(GameAccount account, int index, int total);
 
@@ -182,12 +210,5 @@ public class GiftCodeAutomationService {
     }
 
     private record RedeemAttemptResult(boolean success, String error) {
-        private static RedeemAttemptResult success() {
-            return new RedeemAttemptResult(true, null);
-        }
-
-        private static RedeemAttemptResult failed(String error) {
-            return new RedeemAttemptResult(false, error);
-        }
     }
 }

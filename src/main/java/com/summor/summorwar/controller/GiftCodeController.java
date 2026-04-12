@@ -27,14 +27,19 @@ public class GiftCodeController {
             @RequestParam("file") MultipartFile file,
             @RequestParam("code") String giftCode
     ) {
+        String normalizedGiftCode = giftCode == null ? "" : giftCode.trim().toUpperCase();
+        if (normalizedGiftCode.isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Gift code must not be blank");
+        }
+
         List<GameAccount> accounts = excelService.readExcel(file);
 
         if (accounts.isEmpty()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Excel file does not contain any account");
         }
 
-        RedeemJob job = redeemJobService.createJob(accounts, giftCode);
-        redeemJobService.startJobAsync(job.getJobId(), accounts, giftCode);
+        RedeemJob job = redeemJobService.createJob(accounts, normalizedGiftCode);
+        redeemJobService.startJobAsync(job.getJobId(), accounts, normalizedGiftCode);
 
         return Map.of(
                 "jobId", job.getJobId(),
