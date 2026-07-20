@@ -15,8 +15,6 @@ public class SeleniumConfig {
     @Bean
     public ChromeOptions chromeOptions() {
 
-        WebDriverManager.chromedriver().setup();
-
         ChromeOptions options = new ChromeOptions();
 
         if (headlessMode) {
@@ -27,7 +25,9 @@ public class SeleniumConfig {
         options.addArguments("--disable-dev-shm-usage");
         options.addArguments("--disable-gpu");
         options.addArguments("--window-size=1920,1080");
-        options.addArguments("--remote-allow-origins=*");
+
+        // Chỉ rõ vị trí Chrome trong container
+        options.setBinary("/usr/bin/google-chrome");
 
         return options;
     }
