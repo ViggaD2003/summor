@@ -36,7 +36,7 @@ public class GiftCodeAutomationService {
 
         WebDriverManager.chromedriver().setup();
         WebDriver driver = new ChromeDriver(options);
-        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(12));
+        WebDriverWait wait = new WebDriverWait(driver, Duration.ofSeconds(35));
 
         try {
             for (int index = 0; index < accounts.size(); index++) {
